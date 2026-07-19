@@ -15,8 +15,9 @@ Both follow [xAI Headless & Scripting](https://docs.x.ai/build/cli/headless-scri
 
 ```bash
 npm install
-npm run dev          # Electron + Vite + API
-npm run dev:web      # Browser only → http://127.0.0.1:5173
+npm run dev          # Vite + API (browser)
+npm run dev:desktop  # Electron + Vite + API
+npm run dev:web      # alias of npm run dev → http://127.0.0.1:5173
 ```
 
 Requires [Grok Build CLI](https://docs.x.ai/build/overview) (`grok`) and login (`grok login` or **Login** in the UI / `XAI_API_KEY`).
@@ -35,11 +36,12 @@ Requires [Grok Build CLI](https://docs.x.ai/build/overview) (`grok`) and login (
 ## Scripts
 
 ```bash
-npm run dev        # Electron app
-npm run dev:web    # Browser UI
-npm test           # Unit tests (ACP dispatch + parsers)
-npm run build      # Production UI build
-npm start          # Build + serve on :3921
+npm run dev         # Vite + API (browser)
+npm run dev:desktop # Electron app
+npm run dev:web     # alias of npm run dev
+npm test            # Unit tests (ACP dispatch + parsers)
+npm run build       # Production UI build
+npm start           # Build + serve on :3921
 ```
 
 ## Docs
