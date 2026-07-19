@@ -357,8 +357,39 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, pendingPermission, pendingPlan]);
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setMessages([]);
+        setPendingPermission(null);
+        setPendingPlan(null);
+        setPendingQuestion(null);
+        flash("Chat cleared (Ctrl+K)");
+      }
+      if (e.key.toLowerCase() === "n" && e.shiftKey) {
+        e.preventDefault();
+        (async () => {
+          setAcpConnecting(true);
+          setMessages([]);
+          try {
+            await api("/api/acp/new", { method: "POST", body: "{}" });
+            setSessionMode("fresh");
+            setResumeSessionId("");
+            flash("New session (Ctrl+Shift+N)");
+          } catch (err) {
+            setError(err.message);
+          } finally {
+            setAcpConnecting(false);
+            refresh();
+          }
+        })();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flash, refresh]);
 
   const saveSettings = async (patch) => {
     const data = await api("/api/settings", { method: "POST", body: JSON.stringify(patch) });
@@ -893,7 +924,7 @@ export default function App() {
                   Run Grok
                 </button>
               )}
-              <span className="hint">Ctrl+Enter · engine {engine}</span>
+              <span className="hint">Ctrl+Enter send · Ctrl+K clear · Ctrl+Shift+N new session</span>
             </div>
           </form>
         </section>

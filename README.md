@@ -55,3 +55,7 @@ Add entries in `%USERPROFILE%\.grok\config.toml` per the docs, then refresh Mode
 ## Not affiliated
 
 Unofficial community UI. Grok / Grok Build / xAI are trademarks of xAI.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
