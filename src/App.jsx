@@ -209,6 +209,11 @@ export default function App() {
         case "questionRequest":
           setPendingQuestion(msg.req);
           break;
+        case "billingBlocked":
+          setError(
+            "Grok spending limit (402). Auto-fallback will try Headless if enabled.",
+          );
+          break;
         case "promptComplete":
           setRunning(false);
           patchAssistant((a) => ({ ...a, streaming: false }));
@@ -270,14 +275,31 @@ export default function App() {
 
         if (msg.type !== "run") return;
 
+        if (msg.event === "fallback") {
+          flash(`ACP hit ${msg.reason || "error"} — retrying via Headless…`);
+          setEngine("headless");
+          return;
+        }
+
         if (msg.event === "start") {
           setRunning(true);
           draftRef.current = { thought: "", text: "" };
-          setMessages((prev) => [
-            ...prev,
-            { id: crypto.randomUUID(), role: "user", text: msg.prompt },
-            newAssistant(),
-          ]);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            const lastUser = [...prev].reverse().find((m) => m.role === "user");
+            // Avoid duplicating when ACP already opened a turn, or fallback retries.
+            if (lastUser?.text === msg.prompt && last?.role === "assistant") {
+              return [
+                ...prev.slice(0, -1),
+                { ...last, text: last.text || "", thought: "", tools: last.tools || [], streaming: true },
+              ];
+            }
+            return [
+              ...prev,
+              { id: crypto.randomUUID(), role: "user", text: msg.prompt },
+              newAssistant(),
+            ];
+          });
         }
 
         if (msg.event === "chunk" && msg.json) {
@@ -353,14 +375,7 @@ export default function App() {
       setError("Pick a session to resume, or switch to Continue / Fresh.");
       return;
     }
-    if (engine === "acp") {
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), role: "user", text },
-        newAssistant(),
-      ]);
-      draftRef.current = { thought: "", text: "" };
-    }
+    draftRef.current = { thought: "", text: "" };
     wsRef.current.send(
       JSON.stringify({
         type: "prompt",
@@ -535,6 +550,41 @@ export default function App() {
           <button
             type="button"
             className="ghost"
+            onClick={() => {
+              setMessages([]);
+              setPendingPermission(null);
+              setPendingPlan(null);
+              setPendingQuestion(null);
+              setError("");
+              flash("Chat cleared");
+            }}
+          >
+            Clear chat
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={async () => {
+              setAcpConnecting(true);
+              setMessages([]);
+              try {
+                await api("/api/acp/new", { method: "POST", body: "{}" });
+                setSessionMode("fresh");
+                setResumeSessionId("");
+                flash("New ACP session");
+              } catch (err) {
+                setError(err.message);
+              } finally {
+                setAcpConnecting(false);
+                refresh();
+              }
+            }}
+          >
+            New session
+          </button>
+          <button
+            type="button"
+            className="ghost"
             onClick={async () => {
               setAcpConnecting(true);
               try {
@@ -632,6 +682,14 @@ export default function App() {
                 onChange={(e) => saveSettings({ alwaysApprove: e.target.checked })}
               />
               <span>Always approve</span>
+            </label>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={status?.autoFallback !== false}
+                onChange={(e) => saveSettings({ autoFallback: e.target.checked })}
+              />
+              <span>Fallback on 402</span>
             </label>
             <label className="switch">
               <input
@@ -944,6 +1002,7 @@ export default function App() {
                 <dd>
                   {engine}
                   {status?.acpReady ? " · ready" : ""}
+                  {status?.billingBlocked ? " · billing-blocked" : ""}
                   {running ? " · running" : " · idle"}
                 </dd>
               </div>

@@ -12,6 +12,7 @@ export class AcpEngine {
     this.client = null;
     this.busy = false;
     this.starting = null;
+    this.billingBlocked = false;
   }
 
   get ready() {
@@ -52,7 +53,8 @@ export class AcpEngine {
     this.bind(client);
     await client.start();
 
-    if (settings.sessionMode === "resume" && settings.resumeSessionId) {
+    const wantFresh = settings.sessionMode === "fresh";
+    if (!wantFresh && settings.sessionMode === "resume" && settings.resumeSessionId) {
       try {
         await client.loadSession(settings.resumeSessionId, settings.model || undefined);
       } catch (err) {
@@ -64,6 +66,7 @@ export class AcpEngine {
     }
 
     this.client = client;
+    this.billingBlocked = false;
     this.broadcast({
       type: "acp",
       event: "ready",
@@ -93,15 +96,18 @@ export class AcpEngine {
     client.on("fsWrite", (info) => emit("fsWrite", info));
     client.on("terminalCreate", (info) => emit("terminalCreate", info));
     client.on("commandDone", (info) => emit("commandDone", info));
+    client.on("billingBlocked", (text) => {
+      this.billingBlocked = true;
+      this.busy = false;
+      emit("billingBlocked", { text });
+      this.broadcast({
+        type: "error",
+        error:
+          "Grok spending limit (402). Add credits at https://grok.com/?_s=usage — or Headless fallback will retry.",
+      });
+    });
     client.on("stderr", (text) => {
       emit("stderr", { text });
-      if (/402|Payment Required|spending-limit|out of credits/i.test(text)) {
-        this.broadcast({
-          type: "error",
-          error:
-            "Grok spending limit (402). Add credits at https://grok.com/?_s=usage or switch Engine → Headless.",
-        });
-      }
     });
     client.on("promptStart", ({ text }) => {
       this.busy = true;
@@ -127,7 +133,34 @@ export class AcpEngine {
     return this.ensure();
   }
 
+  /** Force a brand-new ACP session (Fresh). */
+  async newChat() {
+    if (this.client) {
+      await this.client.dispose();
+      this.client = null;
+    }
+    this.billingBlocked = false;
+    return this._startWithMode("fresh");
+  }
+
+  async _startWithMode(sessionMode) {
+    const original = this.getSettings;
+    this.getSettings = () => ({ ...original(), sessionMode });
+    try {
+      return await this._start();
+    } finally {
+      this.getSettings = original;
+    }
+  }
+
   async prompt(text) {
+    if (this.billingBlocked) {
+      const err = new Error("Grok spending limit (402)");
+      err.code = 402;
+      err.billing = true;
+      throw err;
+    }
+
     const client = await this.ensure();
     const settings = this.getSettings();
     client.setAlwaysApprove(settings.alwaysApprove);
@@ -144,7 +177,12 @@ export class AcpEngine {
       throw new Error("A prompt is already running. Stop it first.");
     }
 
-    return client.prompt(text);
+    try {
+      return await client.prompt(text);
+    } catch (err) {
+      this.busy = false;
+      throw err;
+    }
   }
 
   cancel() {

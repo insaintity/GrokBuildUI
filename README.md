@@ -24,13 +24,23 @@ Requires [Grok Build CLI](https://docs.x.ai/build/overview) (`grok`) and login (
 ## Features
 
 - **Chat** with streaming thoughts + assistant text
-- **Model / effort / session** controls (`-m`, `--effort`, continue / resume / fresh)
+- **ACP (default)** with tools, permission cards, plan review
+- **Auto-fallback** — if ACP hits a spending limit (402), retry via Headless
+- **Model / effort / session** controls
 - **Always approve** or interactive permission cards
-- **Plan review** + ask-user questions (ACP)
-- **Tool + shell command** activity in the transcript
-- **GitHub**: Commit all · Push · Open PR (`git` + `gh`)
-- **Commands**: Login, Device login, Inspect JSON, MCP list, Export MD, Update CLI
-- **Docs links** to Overview / Headless+ACP / CLI reference
+- **Clear chat / New session / Restart agent**
+- **GitHub**: Commit all · Push · Open PR
+- **Commands**: Login, Inspect JSON, MCP list, Export MD, Update CLI
+
+## Scripts
+
+```bash
+npm run dev        # Electron app
+npm run dev:web    # Browser UI
+npm test           # Unit tests (ACP dispatch + parsers)
+npm run build      # Production UI build
+npm start          # Build + serve on :3921
+```
 
 ## Docs
 

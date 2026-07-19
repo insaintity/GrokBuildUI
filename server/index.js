@@ -26,6 +26,8 @@ const state = {
   noAutoUpdate: true,
   // acp (recommended) | headless
   engine: process.env.GROK_UI_ENGINE || "acp",
+  // If ACP hits billing/402, automatically retry once via headless
+  autoFallback: process.env.GROK_UI_AUTO_FALLBACK !== "0",
   activeRun: null,
 };
 
@@ -65,6 +67,8 @@ function settingsPublic() {
     effort: state.effort || null,
     noAutoUpdate: state.noAutoUpdate,
     engine: state.engine,
+    autoFallback: state.autoFallback,
+    billingBlocked: acp.billingBlocked,
     hasApiKey: Boolean(process.env.XAI_API_KEY),
     docs: {
       overview: "https://docs.x.ai/build/overview",
@@ -134,6 +138,7 @@ app.post("/api/settings", async (req, res) => {
     effort,
     noAutoUpdate,
     engine,
+    autoFallback,
   } = req.body || {};
 
   let restartAcp = false;
@@ -154,6 +159,7 @@ app.post("/api/settings", async (req, res) => {
     acp.client?.setAlwaysApprove(alwaysApprove);
   }
   if (typeof noAutoUpdate === "boolean") state.noAutoUpdate = noAutoUpdate;
+  if (typeof autoFallback === "boolean") state.autoFallback = autoFallback;
   if (typeof effort === "string" && effort !== state.effort) {
     state.effort = effort.trim();
     restartAcp = true;
@@ -198,6 +204,18 @@ app.post("/api/acp/ensure", async (_req, res) => {
 app.post("/api/acp/restart", async (_req, res) => {
   try {
     const client = await acp.restart();
+    res.json({ ok: true, sessionId: client.sessionId, model: client.currentModelId });
+  } catch (err) {
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
+app.post("/api/acp/new", async (_req, res) => {
+  try {
+    state.sessionMode = "fresh";
+    state.resumeSessionId = "";
+    acp.billingBlocked = false;
+    const client = await acp.newChat();
     res.json({ ok: true, sessionId: client.sessionId, model: client.currentModelId });
   } catch (err) {
     res.status(500).json({ error: err.message || String(err) });
@@ -401,6 +419,13 @@ wss.on("connection", (ws) => {
         await acp.restart();
         return;
       }
+      if (msg.type === "acp/new") {
+        state.sessionMode = "fresh";
+        state.resumeSessionId = "";
+        acp.billingBlocked = false;
+        await acp.newChat();
+        return;
+      }
       if (msg.type === "permissionAnswer") {
         acp.answerPermission(msg.requestId, msg.optionId);
         return;
@@ -442,8 +467,25 @@ async function startAcpPrompt(msg) {
     await acp.prompt(prompt);
     broadcast({ type: "run", event: "end", engine: "acp", code: 0 });
   } catch (err) {
-    broadcast({ type: "run", event: "error", engine: "acp", error: err.message });
+    const billing = err?.billing || err?.code === 402 || /402|spending limit/i.test(err.message || "");
+    broadcast({ type: "run", event: "error", engine: "acp", error: err.message, billing });
     broadcast({ type: "run", event: "end", engine: "acp", code: 1 });
+
+    if (billing && state.autoFallback && msg.fallback !== false) {
+      broadcast({
+        type: "run",
+        event: "fallback",
+        from: "acp",
+        to: "headless",
+        reason: "billing",
+      });
+      await startHeadlessPrompt({
+        ...msg,
+        prompt,
+        engine: "headless",
+        sessionMode: "fresh",
+      });
+    }
   }
 }
 

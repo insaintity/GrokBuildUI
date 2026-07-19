@@ -71,6 +71,21 @@ export class AcpClient extends EventEmitter {
       const text = d.toString();
       this.log(`[stderr] ${text}`);
       this.emit("stderr", text);
+      if (/402|Payment Required|spending-limit|out of credits/i.test(text)) {
+        this.emit("billingBlocked", text);
+        // Fail any in-flight RPC (usually session/prompt) so callers can fall back.
+        for (const [id, p] of this.pending) {
+          this.pending.delete(id);
+          if (p.timer) clearTimeout(p.timer);
+          p.reject(
+            Object.assign(new Error("Grok spending limit (402)"), {
+              code: 402,
+              billing: true,
+            }),
+          );
+        }
+        this.cancel("billing");
+      }
     });
     this.proc.on("exit", (code) => {
       this.log(`grok exited ${code}`);
