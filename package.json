@@ -1,0 +1,34 @@
+{
+  "name": "grok-build-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop GUI for Grok Build — chat, models, GitHub push, no terminal required",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:server": "node server/index.js",
+    "dev:electron": "wait-on http://127.0.0.1:5173 http://127.0.0.1:3921/api/health && electron .",
+    "dev:web": "concurrently -k \"npm:dev:server\" \"npm:dev:vite\"",
+    "build": "vite build",
+    "start": "npm run build && node server/index.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^34.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "vite": "^6.1.0",
+    "wait-on": "^8.0.2"
+  }
+}
