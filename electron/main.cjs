@@ -6,6 +6,18 @@ const isDev = !app.isPackaged;
 let mainWindow = null;
 let serverProc = null;
 
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 function startServer() {
   if (!isDev) {
     serverProc = spawn(process.execPath, [path.join(__dirname, "..", "server", "index.js")], {
@@ -57,6 +69,7 @@ ipcMain.handle("open-external", async (_e, url) => {
 });
 
 app.whenReady().then(() => {
+  if (!gotLock) return;
   startServer();
   createWindow();
 });
