@@ -899,6 +899,40 @@ export default function App() {
         </section>
 
         <aside className="side">
+          <section className="card-block projects">
+            <h2>Recent projects</h2>
+            <ul className="session-list">
+              {(status?.recentProjects || []).map((p) => (
+                <li key={p}>
+                  <button
+                    type="button"
+                    className={`session-btn ${status?.projectPath === p ? "active" : ""}`}
+                    onClick={async () => {
+                      setAcpConnecting(true);
+                      try {
+                        await saveSettings({ projectPath: p });
+                        flash(`Project → ${p}`);
+                      } catch (err) {
+                        setError(err.message);
+                      } finally {
+                        setAcpConnecting(false);
+                      }
+                    }}
+                  >
+                    <strong title={p}>{p.split(/[/\\]/).filter(Boolean).slice(-2).join("/")}</strong>
+                    <code>{p.length > 28 ? `…${p.slice(-24)}` : p}</code>
+                  </button>
+                </li>
+              ))}
+              {(status?.recentProjects || []).length === 0 && (
+                <li className="muted">Open a project to pin it here</li>
+              )}
+            </ul>
+            {status?.settingsFile && (
+              <p className="muted tiny">Saved in {status.settingsFile}</p>
+            )}
+          </section>
+
           <section className="card-block github">
             <h2>GitHub</h2>
             <p className="muted">

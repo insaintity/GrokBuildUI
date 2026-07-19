@@ -10,26 +10,42 @@ import { fileURLToPath } from "node:url";
 import { findGrokBin, runCommand, parseModels, parseSessions } from "./grok.js";
 import { gitStatus, gitCommitAll, gitPush, createPullRequest } from "./github.js";
 import { AcpEngine } from "./acp/engine.js";
+import { loadSettings, saveSettings, settingsPath } from "./settings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.GROK_UI_PORT || 3921);
 const ROOT = path.resolve(__dirname, "..");
 
+const saved = loadSettings();
 const state = {
-  projectPath: process.env.GROK_UI_PROJECT || ROOT,
-  model: process.env.GROK_UI_MODEL || "",
-  alwaysApprove: true,
-  // continue | resume | fresh — for headless; ACP uses resume via loadSession
-  sessionMode: "continue",
-  resumeSessionId: "",
-  effort: "",
-  noAutoUpdate: true,
-  // acp (recommended) | headless
-  engine: process.env.GROK_UI_ENGINE || "acp",
-  // If ACP hits billing/402, automatically retry once via headless
-  autoFallback: process.env.GROK_UI_AUTO_FALLBACK !== "0",
+  projectPath: process.env.GROK_UI_PROJECT || saved.projectPath || ROOT,
+  model: process.env.GROK_UI_MODEL || saved.model || "",
+  alwaysApprove: saved.alwaysApprove !== false,
+  sessionMode: saved.sessionMode || "continue",
+  resumeSessionId: saved.resumeSessionId || "",
+  effort: saved.effort || "",
+  noAutoUpdate: saved.noAutoUpdate !== false,
+  engine: process.env.GROK_UI_ENGINE || saved.engine || "acp",
+  autoFallback: process.env.GROK_UI_AUTO_FALLBACK !== "0" && saved.autoFallback !== false,
+  recentProjects: saved.recentProjects || [],
   activeRun: null,
 };
+
+function persistState() {
+  const next = saveSettings({
+    projectPath: state.projectPath,
+    model: state.model,
+    alwaysApprove: state.alwaysApprove,
+    sessionMode: state.sessionMode,
+    resumeSessionId: state.resumeSessionId,
+    effort: state.effort,
+    noAutoUpdate: state.noAutoUpdate,
+    engine: state.engine,
+    autoFallback: state.autoFallback,
+    recentProjects: state.recentProjects,
+  });
+  state.recentProjects = next.recentProjects || [];
+}
 
 const app = express();
 app.use(cors());
@@ -69,6 +85,8 @@ function settingsPublic() {
     engine: state.engine,
     autoFallback: state.autoFallback,
     billingBlocked: acp.billingBlocked,
+    recentProjects: state.recentProjects || [],
+    settingsFile: settingsPath(),
     hasApiKey: Boolean(process.env.XAI_API_KEY),
     docs: {
       overview: "https://docs.x.ai/build/overview",
@@ -176,6 +194,8 @@ app.post("/api/settings", async (req, res) => {
     state.engine = engine;
   }
 
+  persistState();
+
   if (restartAcp && state.engine === "acp") {
     try {
       await acp.restart();
@@ -215,6 +235,7 @@ app.post("/api/acp/new", async (_req, res) => {
     state.sessionMode = "fresh";
     state.resumeSessionId = "";
     acp.billingBlocked = false;
+    persistState();
     const client = await acp.newChat();
     res.json({ ok: true, sessionId: client.sessionId, model: client.currentModelId });
   } catch (err) {
